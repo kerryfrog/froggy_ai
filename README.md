@@ -1,0 +1,2 @@
+run scrpit : 
+    flask run
