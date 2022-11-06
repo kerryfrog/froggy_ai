@@ -1,2 +1,2 @@
-run scrpit : 
-    flask run
+run script :
+flask run
