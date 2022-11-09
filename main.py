@@ -5,9 +5,12 @@ import pandas as pd
 from flask import Flask, jsonify
 from flask_restful import reqparse
 import joblib
-from . import famous_patterns
+import logging
+from famous_patterns import get_patterns
 
 app = Flask(__name__)
+
+patterns = get_patterns()
 
 
 class MatrixFactorization():
@@ -38,29 +41,42 @@ class MatrixFactorization():
 
         :return: training_process
         """
+        try:
+            # init latent features
+            self._P = np.random.normal(size=(self._num_users, self._k))
+            self._Q = np.random.normal(size=(self._num_items, self._k))
 
-        # init latent features
-        self._P = np.random.normal(size=(self._num_users, self._k))
-        self._Q = np.random.normal(size=(self._num_items, self._k))
+            # init biases
+            self._b_P = np.zeros(self._num_users)
+            self._b_Q = np.zeros(self._num_items)
 
-        # init biases
-        self._b_P = np.zeros(self._num_users)
-        self._b_Q = np.zeros(self._num_items)
-        self._b = np.mean(self._R[np.where(self._R != 0)])
+            # not_zero = (self._R != 0)
+            # arr = np.where(not_zero)
+            # inr = self._R[arr]  # 여기서 에러
+            # # Index data must be 1-dimensional
 
-        # train while epochs
-        self._training_process = []
-        for epoch in range(self._epochs):
-            # rating이 존재하는 index를 기준으로 training
-            xi, yi = self._R.nonzero()
-            for i, j in zip(xi, yi):
-                self.gradient_descent(i, j, self._R[i, j])
-            cost = self.cost()
-            self._training_process.append((epoch, cost))
+            # self._b = np.mean(inr)
 
-            # print status
-            if self._verbose == True and ((epoch + 1) % 5 == 0):
-                print("Iteration: %d ; cost = %.4f" % (epoch + 1, cost))
+            self._b = np.mean(self._R[np.where(self._R != 0)])
+
+            # train while epochs
+            self._training_process = []
+            for epoch in range(self._epochs):
+                # rating이 존재하는 index를 기준으로 training
+                xi, yi = self._R.nonzero()
+                for i, j in zip(xi, yi):
+                    self.gradient_descent(i, j, self._R[i, j])
+                cost = self.cost()
+                self._training_process.append((epoch, cost))
+
+                # print status
+                if self._verbose == True and ((epoch + 1) % 5 == 0):
+                    print("Iteration: %d ; cost = %.4f" % (epoch + 1, cost))
+
+        except Exception as e:
+            app.logger.error(e)
+            print(e)
+            return {'error': str(e)}
 
     def cost(self):
         """
@@ -143,11 +159,16 @@ def read_csv():
 
 
 def append_mtrx(mtrx, new_user, new_pattern):
+    new_pattern = ('score', new_pattern)
     data = {
-        new_pattern: '5'  # '5' means score
+        new_pattern: 5  # 5 means score
     }
     df = pd.DataFrame(data, index=[new_user])
-    mtrx = mtrx.append(df)
+    mtrx = pd.concat([mtrx, df])
+
+    # mtrx.columns = [patterns.index]
+    mtrx = mtrx.fillna(0)
+
     return mtrx
 
 
@@ -160,33 +181,19 @@ def mf(mtrx):
     return mtrx
 
 
-def named_mtrx(mtrx):
+def name_mtrx(mtrx):
     mtrx = np.round(mtrx, 5)
     # mtrx의 column은 patternId, row는 userId로 바꾸기
-    mtrx.columns = famous_patterns
+
+    mtrx.columns = patterns
     mtrx.columns.name = "patternId"
     mtrx.index.name = "userId"
     return mtrx
 
 
-@app.route('/')
-def hello_world():
-    return 'Hello World!'
-
-
-@app.route('/recommend/pattern')
-def pattern():
-    return "ppatternRouter"
-
-
-@app.route('/recommend', methods=['POST'])
-def predict():
-    parser = reqparse.RequestParser()
-    data = {
-        'test': 'get data from flask server!',
-        'som': 'dasom'
-    }
-    return jsonify(data)
+def get_max(mtrx, user):
+    new_row = mtrx[mtrx.index == user]
+    return new_row.max(axis=1)
 
 
 @app.route('/newmodel', methods=['POST'])
@@ -199,13 +206,12 @@ def get_recommend():
 
         _targetId = args['targetId']
         _userId = args['userId']
-        
+
         mtrx = read_csv()
         appended_mtrx = append_mtrx(mtrx, _userId, _targetId)
-        mf_matrix = mf(appended_mtrx)
-        result = named_mtrx(mf_matrix)
-
-        return {'TargetId': args['targetId'], 'UserId': args['userId']}
+        mf_matrix = mf(appended_mtrx)  # 여기서 자꾸 에러 남
+        named = name_mtrx(mf_matrix)
+        return get_max(named, _userId)
 
     except Exception as e:
         app.logger.error(e)
