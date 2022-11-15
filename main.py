@@ -1,3 +1,4 @@
+from sklearn.metrics import mean_squared_error
 from tqdm import tqdm_notebook as tqdm
 import os
 import numpy as np
@@ -49,13 +50,6 @@ class MatrixFactorization():
             # init biases
             self._b_P = np.zeros(self._num_users)
             self._b_Q = np.zeros(self._num_items)
-
-            # not_zero = (self._R != 0)
-            # arr = np.where(not_zero)
-            # inr = self._R[arr]  # 여기서 에러
-            # # Index data must be 1-dimensional
-
-            # self._b = np.mean(inr)
 
             self._b = np.mean(self._R[np.where(self._R != 0)])
 
@@ -153,21 +147,82 @@ class MatrixFactorization():
         return self._b + self._b_P[:, np.newaxis] + self._b_Q[np.newaxis:, ] + self._P.dot(self._Q.T)
 
 
+def get_rmse(R, P, Q, non_zeros):
+    error = 0
+    # 두개의 분해된 행렬 P와 Q.T의 내적 곱으로 예측 R 행렬 생성
+    full_pred_matrix = np.dot(P, Q.T)
+
+    # 실제 R 행렬에서 널이 아닌 값의 위치 인덱스 추출하여 실제 R 행렬과 예측 행렬의 RMSE 추출
+    x_non_zero_ind = [non_zero[0] for non_zero in non_zeros]
+    y_non_zero_ind = [non_zero[1] for non_zero in non_zeros]
+    R_non_zeros = R[x_non_zero_ind, y_non_zero_ind]
+
+    full_pred_matrix_non_zeros = full_pred_matrix[x_non_zero_ind,
+                                                  y_non_zero_ind]
+
+    mse = mean_squared_error(R_non_zeros, full_pred_matrix_non_zeros)
+    rmse = np.sqrt(mse)
+
+    return rmse
+
+
+def matrix_factorization(R, K, steps=200, learning_rate=0.01, r_lambda=0.01):
+    num_users, num_items = R.shape
+    # P와 Q 매트릭스의 크기를 지정하고 정규분포를 가진 랜덤한 값으로 입력합니다.
+    np.random.seed(1)
+    P = np.random.normal(scale=1./K, size=(num_users, K))
+    Q = np.random.normal(scale=1./K, size=(num_items, K))
+
+    break_count = 0
+    # R > 0 인 행 위치, 열 위치, 값을 non_zeros 리스트 객체에 저장.
+    non_zeros = [(i, j, R[i, j]) for i in range(num_users)
+                 for j in range(num_items) if R[i, j] > 0]
+
+    # SGD기법으로 P와 Q 매트릭스를 계속 업데이트.
+    for step in range(steps):
+        for i, j, r in non_zeros:
+            # 실제 값과 예측 값의 차이인 오류 값 구함
+            eij = r - np.dot(P[i, :], Q[j, :].T)
+            # Regularization을 반영한 SGD 업데이트 공식 적용
+            P[i, :] = P[i, :] + learning_rate * \
+                (eij * Q[j, :] - r_lambda*P[i, :])
+            Q[j, :] = Q[j, :] + learning_rate * \
+                (eij * P[i, :] - r_lambda*Q[j, :])
+
+        rmse = get_rmse(R, P, Q, non_zeros)
+        if step % 10 == 0:
+            print("### iteration step : ", step, " rmse : ", np.round(rmse, 7))
+
+    return P, Q
+
+
+def predict(mtrx):
+    mtrx = pd.DataFrame(mtrx)
+    # mtrx['pattern_id'] = pd.to_numeric(mtrx['pattern_id'])
+    P, Q = matrix_factorization(
+        mtrx.values, K=30, steps=1, learning_rate=0.01, r_lambda=0.01)
+    pred_matrix = np.dot(P, Q.T)  # P @ Q.T 도 가능
+    print('실제 행렬:\n', mtrx)
+    print('\n예측 행렬:\n', np.round(pred_matrix, 2))
+    return pred_matrix
+
+
 def read_csv():
-    mtrx = pd.read_csv("./sgd.csv", encoding='cp949')
+    mtrx = pd.read_csv("./sgd.csv", encoding='cp949', index_col=0)
     return mtrx
 
 
 def append_mtrx(mtrx, new_user, new_pattern):
-    new_pattern = ('score', new_pattern)
     data = {
-        new_pattern: 5  # 5 means score
+        new_pattern: int(5)  # 5 means score
     }
     df = pd.DataFrame(data, index=[new_user])
     mtrx = pd.concat([mtrx, df])
 
     # mtrx.columns = [patterns.index]
     mtrx = mtrx.fillna(0)
+    print(mtrx)
+    mtrx = mtrx.to_numpy()
 
     return mtrx
 
@@ -178,6 +233,7 @@ def mf(mtrx):
     factorizer.fit()
     mtrx = factorizer.get_complete_matrix()
     mtrx = pd.DataFrame(mtrx)
+    print(mtrx)
     return mtrx
 
 
@@ -192,8 +248,28 @@ def name_mtrx(mtrx):
 
 
 def get_max(mtrx, user):
-    new_row = mtrx[mtrx.index == user]
-    return new_row.max(axis=1)
+    new_row = mtrx[mtrx.index == 5622]
+
+    new_row = pd.DataFrame(new_row)
+    maxValueIndex = new_row.idxmax(axis=1)
+    result = maxValueIndex[5622]
+    return result
+
+
+@app.route('/recommend', methods=['POST'])
+def parse():
+    try:
+        parser = reqparse.RequestParser()
+        parser.add_argument('targetId', type=str)
+        parser.add_argument('userId', type=str)
+        args = parser.parse_args()
+        _targetId = args['targetId']
+        _userId = args['userId']
+
+    except Exception as e:
+        app.logger.error(e)
+        return {'error': str(e)}
+    return 0
 
 
 @app.route('/newmodel', methods=['POST'])
@@ -209,9 +285,12 @@ def get_recommend():
 
         mtrx = read_csv()
         appended_mtrx = append_mtrx(mtrx, _userId, _targetId)
-        mf_matrix = mf(appended_mtrx)  # 여기서 자꾸 에러 남
+        # mf_matrix = mf(appended_mtrx)  # 여기서 자꾸 에러 남
+        mf_matrix = mf(appended_mtrx)
         named = name_mtrx(mf_matrix)
-        return get_max(named, _userId)
+        result = get_max(named, _userId)
+
+        return str(result)
 
     except Exception as e:
         app.logger.error(e)
