@@ -3,7 +3,7 @@ from tqdm import tqdm_notebook as tqdm
 import os
 import numpy as np
 import pandas as pd
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_restful import reqparse
 import joblib
 import logging
@@ -212,10 +212,15 @@ def read_csv():
     return mtrx
 
 
-def append_mtrx(mtrx, new_user, new_pattern):
-    data = {
-        new_pattern: int(5)  # 5 means score
-    }
+def append_mtrx(mtrx, new_user, score_list):
+    data = {}
+    for score in score_list:
+        _patternId = score['id']
+        _score = score['score']
+        _patternId = str(_patternId)
+
+        data[_patternId] = _score
+
     df = pd.DataFrame(data, index=[new_user])
     mtrx = pd.concat([mtrx, df])
 
@@ -247,54 +252,61 @@ def name_mtrx(mtrx):
     return mtrx
 
 
-def get_max(mtrx, user):
-    new_row = mtrx[mtrx.index == 5622]
+def get_max(mtrx, user, index):
+    cur_user_index = 5622 + index
+    new_row = mtrx[mtrx.index == cur_user_index]
 
-    new_row = pd.DataFrame(new_row)
+    # 최댓값의 인덱스 찾는 코드
     maxValueIndex = new_row.idxmax(axis=1)
-    result = maxValueIndex[5622]
-    return result
+    result = maxValueIndex[cur_user_index]
+
+    # 최댓값 n개 찾기
+
+    top_n = 10
+    # new_row = new_row.argsort()[::-1]
+    # rank = new_row.flatten()
+    # rank = rank.tolist()
+
+    # print(rank[top_n])
+    print(result)
+    print(mtrx.sort_values(by=cur_user_index, axis=1))
+    return str(result)
 
 
 @app.route('/recommend', methods=['POST'])
 def parse():
     try:
-        parser = reqparse.RequestParser()
-        parser.add_argument('targetId', type=str)
-        parser.add_argument('userId', type=str)
-        args = parser.parse_args()
-        _targetId = args['targetId']
-        _userId = args['userId']
+        # parser = reqparse.RequestParser()
+        # parser.add_argument('userScoreList', type=list)
+        # args = parser.parse_args()
+        # _userScoreList= args['userScoreList']
+
+        userScoreList = request.get_json(force=True)
+        userScoreList = userScoreList['userScoreList']
+        recommendList = []
+
+        for i in range(len(userScoreList)):
+            userScore = userScoreList[i]
+            _userId = userScore['user']
+            scoreList = userScore['scoreList']
+
+            for eachScore in scoreList:
+                _id = eachScore['id']
+                _score = eachScore['score']
+                # print(_id, _score)
+            mtrx = read_csv()
+            appended_mtrx = append_mtrx(mtrx, _userId, scoreList)
+
+            mf_matrix = mf(appended_mtrx)
+            named = name_mtrx(mf_matrix)
+            result = get_max(named, _userId, i)
+            recommendList.append(result)
+        return recommendList
 
     except Exception as e:
         app.logger.error(e)
         return {'error': str(e)}
     return 0
-
-
-@app.route('/newmodel', methods=['POST'])
-def get_recommend():
-    try:
-        parser = reqparse.RequestParser()
-        parser.add_argument('targetId', type=str)
-        parser.add_argument('userId', type=str)
-        args = parser.parse_args()
-
-        _targetId = args['targetId']
-        _userId = args['userId']
-
-        mtrx = read_csv()
-        appended_mtrx = append_mtrx(mtrx, _userId, _targetId)
-        # mf_matrix = mf(appended_mtrx)  # 여기서 자꾸 에러 남
-        mf_matrix = mf(appended_mtrx)
-        named = name_mtrx(mf_matrix)
-        result = get_max(named, _userId)
-
-        return str(result)
-
-    except Exception as e:
-        app.logger.error(e)
-        return {'error': str(e)}
 
 
 # 파이썬 명령어로 실행할 수 있음
