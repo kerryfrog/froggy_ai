@@ -303,7 +303,7 @@ def parse():
             mf_matrix = mf(appended_mtrx)
             named = name_mtrx(mf_matrix)
             result = get_max(named, _userId, i)
-            recommendList.append(result)
+            recommendList.append((_userId, result))
         return recommendList
 
     except Exception as e:
