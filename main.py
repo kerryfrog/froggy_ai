@@ -268,9 +268,12 @@ def get_max(mtrx, user, index):
     # rank = rank.tolist()
 
     # print(rank[top_n])
-    print(result)
-    print(mtrx.sort_values(by=cur_user_index, axis=1))
-    return str(result)
+    # print(result)
+    # print(mtrx.sort_values(by=cur_user_index, axis=1))
+    # print(type(new_row))
+    predicted_scores = new_row.values.tolist()
+    # print(predicted_scores)
+    return predicted_scores
 
 
 @app.route('/recommend', methods=['POST'])
