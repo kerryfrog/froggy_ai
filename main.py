@@ -1,13 +1,9 @@
 from sklearn.metrics import mean_squared_error
-from tqdm import tqdm_notebook as tqdm
-import os
 import numpy as np
 import pandas as pd
-from flask import Flask, jsonify, request
-from flask_restful import reqparse
-import joblib
-import logging
+from flask import Flask, request
 from famous_patterns import get_patterns
+
 
 app = Flask(__name__)
 
