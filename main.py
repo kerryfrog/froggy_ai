@@ -196,7 +196,7 @@ def predict(mtrx):
     mtrx = pd.DataFrame(mtrx)
     # mtrx['pattern_id'] = pd.to_numeric(mtrx['pattern_id'])
     P, Q = matrix_factorization(
-        mtrx.values, K=30, steps=1, learning_rate=0.01, r_lambda=0.01)
+        mtrx.values, K=30, steps=50, learning_rate=0.01, r_lambda=0.01)
     pred_matrix = np.dot(P, Q.T)  # P @ Q.T 도 가능
     print('실제 행렬:\n', mtrx)
     print('\n예측 행렬:\n', np.round(pred_matrix, 2))
@@ -209,7 +209,7 @@ def read_csv():
 
 
 def append_mtrx(mtrx, new_user, score_list):
-    data = {}
+    data = {} #
     for score in score_list:
         _patternId = score['id']
         _score = score['score']
@@ -223,12 +223,13 @@ def append_mtrx(mtrx, new_user, score_list):
     # mtrx.columns = [patterns.index]
     mtrx = mtrx.fillna(0)
     print(mtrx)
-    mtrx = mtrx.to_numpy()
+    
 
     return mtrx
 
 
 def mf(mtrx):
+    mtrx = mtrx.to_numpy()
     factorizer = MatrixFactorization(
         mtrx, k=30, learning_rate=0.05, reg_param=0.02, epochs=1, verbose=True)
     factorizer.fit()
@@ -284,6 +285,7 @@ def parse():
         userScoreList = userScoreList['userScoreList']
         recommendList = []
 
+        mtrx = read_csv()
         for i in range(len(userScoreList)):
             userScore = userScoreList[i]
             _userId = userScore['user']
@@ -293,8 +295,12 @@ def parse():
                 _id = eachScore['id']
                 _score = eachScore['score']
                 # print(_id, _score)
-            mtrx = read_csv()
-            appended_mtrx = append_mtrx(mtrx, _userId, scoreList)
+            print("mtrx",mtrx)
+            mtrx = pd.DataFrame(mtrx)
+            
+            appended_mtrx = append_mtrx(mtrx, _userId, scoreList) #
+            print("append",appended_mtrx)
+            mtrx = appended_mtrx
 
             mf_matrix = mf(appended_mtrx)
             named = name_mtrx(mf_matrix)
@@ -311,4 +317,4 @@ def parse():
 # 파이썬 명령어로 실행할 수 있음
 if __name__ == '__main__':
     # mtrx.summary()
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(host='127.0.0.1', port=8000, debug=True)
